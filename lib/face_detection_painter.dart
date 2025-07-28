@@ -71,19 +71,19 @@ class FaceDetectionPainter extends CustomPainter {
       drawLandmark(FaceLandmarkType.rightMouth);
       drawLandmark(FaceLandmarkType.bottomMouth);
 
-      String mood = "Neutral";
-      final smileProb = face.smilingProbability ?? 0;
-
-      if (smileProb > 0.8) {
-        mood = 'Laughing';
-      } else if (smileProb > 0.5) {
-        mood = 'Smiling';
-      } else if (smileProb < 0.1) {
-        mood = 'Serious';
-      }
+      // String mood = "Neutral";
+      // final smileProb = face.smilingProbability ?? 0;
+      //
+      // if (smileProb > 0.8) {
+      //   mood = 'Laughing';
+      // } else if (smileProb > 0.5) {
+      //   mood = 'Smiling';
+      // } else if (smileProb < 0.1) {
+      //   mood = 'Serious';
+      // }
 
       final TextSpan faceIdSpan = TextSpan(
-          text: 'Face ${i + 1}\n$mood',
+          text: 'Face ${i + 1}',
           style: TextStyle(
               color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold));
 
