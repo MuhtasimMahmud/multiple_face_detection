@@ -1,6 +1,8 @@
+import 'dart:math';
+
 import 'package:camera/camera.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FaceDetectionPainter extends CustomPainter {
@@ -12,6 +14,7 @@ class FaceDetectionPainter extends CustomPainter {
   final int sensorOrientation;
   final double minDistanceThreshold;
   final double maxDistanceThreshold;
+  final DeviceOrientation deviceOrientation;
 
   FaceDetectionPainter({
     required this.faces,
@@ -22,22 +25,26 @@ class FaceDetectionPainter extends CustomPainter {
     required this.sensorOrientation,
     required this.minDistanceThreshold,
     required this.maxDistanceThreshold,
+    required this.deviceOrientation,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (faces.isEmpty) return;
 
+    // Determine effective image dimensions based on orientation
+    Size effectiveImageSize = _getEffectiveImageSize();
+    
     // Calculate scaling factors - use the actual preview size ratio
-    final double scaleX = size.width / imageSize.width;
-    final double scaleY = size.height / imageSize.height;
+    final double scaleX = size.width / effectiveImageSize.width;
+    final double scaleY = size.height / effectiveImageSize.height;
     
     // Use the smaller scale to maintain aspect ratio
     final double scale = scaleX < scaleY ? scaleX : scaleY;
     
     // Calculate offsets to center the scaled image
-    final double offsetX = (size.width - imageSize.width * scale) / 2;
-    final double offsetY = (size.height - imageSize.height * scale) / 2;
+    final double offsetX = (size.width - effectiveImageSize.width * scale) / 2;
+    final double offsetY = (size.height - effectiveImageSize.height * scale) / 2;
 
 
     final Paint landMarkPaint = Paint()
@@ -52,23 +59,19 @@ class FaceDetectionPainter extends CustomPainter {
     for (var i = 0; i < faces.length; i++) {
       final Face face = faces[i];
       
-      // Transform coordinates for face bounding box
-      double left, top, right, bottom;
+      // Transform coordinates for face bounding box with orientation support
+      final transformedBounds = _transformBoundingBox(
+        face.boundingBox, 
+        scale, 
+        offsetX, 
+        offsetY,
+        effectiveImageSize
+      );
       
-      // Apply coordinate transformation based on camera orientation
-      if (cameraLenseDirection == CameraLensDirection.front) {
-        // For front camera, mirror the coordinates horizontally
-        left = (imageSize.width - face.boundingBox.right) * scale + offsetX;
-        right = (imageSize.width - face.boundingBox.left) * scale + offsetX;
-        top = face.boundingBox.top * scale + offsetY;
-        bottom = face.boundingBox.bottom * scale + offsetY;
-      } else {
-        // For back camera, use coordinates as-is
-        left = face.boundingBox.left * scale + offsetX;
-        right = face.boundingBox.right * scale + offsetX;
-        top = face.boundingBox.top * scale + offsetY;
-        bottom = face.boundingBox.bottom * scale + offsetY;
-      }
+      final double left = transformedBounds.left;
+      final double top = transformedBounds.top;
+      final double right = transformedBounds.right;
+      final double bottom = transformedBounds.bottom;
 
       // Draw face bounding rectangle with different colors based on distance
       final Paint currentFacePaint = Paint()
@@ -78,7 +81,7 @@ class FaceDetectionPainter extends CustomPainter {
       // Check individual face distance for color coding
       final faceWidth = face.boundingBox.width;
       final faceHeight = face.boundingBox.height;
-      final faceAreaPercentage = (faceWidth * faceHeight) / (imageSize.width * imageSize.height);
+      final faceAreaPercentage = (faceWidth * faceHeight) / (effectiveImageSize.width * effectiveImageSize.height);
       
       if (faceAreaPercentage < minDistanceThreshold || faceAreaPercentage > maxDistanceThreshold) {
         currentFacePaint.color = Colors.red;
@@ -88,24 +91,24 @@ class FaceDetectionPainter extends CustomPainter {
       
       canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), currentFacePaint);
 
-      // Function to draw facial landmarks
+      // Function to draw facial landmarks with orientation support
       void drawLandmark(FaceLandmarkType type) {
         if (face.landmarks[type] != null) {
           final point = face.landmarks[type]!.position;
           
-          double pointX, pointY;
-          
-          if (cameraLenseDirection == CameraLensDirection.front) {
-            // Mirror X coordinate for front camera
-            pointX = (imageSize.width - point.x) * scale + offsetX;
-            pointY = point.y * scale + offsetY;
-          } else {
-            // Use coordinates as-is for back camera
-            pointX = point.x * scale + offsetX;
-            pointY = point.y * scale + offsetY;
-          }
+          final transformedPoint = _transformPoint(
+            point, 
+            scale, 
+            offsetX, 
+            offsetY,
+            effectiveImageSize
+          );
 
-          canvas.drawCircle(Offset(pointX, pointY), 3.0, landMarkPaint);
+          canvas.drawCircle(
+            Offset(transformedPoint.dx, transformedPoint.dy), 
+            3.0, 
+            landMarkPaint
+          );
         }
       }
 
@@ -155,11 +158,105 @@ class FaceDetectionPainter extends CustomPainter {
     }
   }
 
+  Size _getEffectiveImageSize() {
+    // Adjust image size based on device orientation
+    switch (deviceOrientation) {
+      case DeviceOrientation.landscapeLeft:
+      case DeviceOrientation.landscapeRight:
+        return Size(imageSize.height, imageSize.width);
+      default:
+        return imageSize;
+    }
+  }
+  
+  Rect _transformBoundingBox(
+      Rect boundingBox, 
+      double scale, 
+      double offsetX, 
+      double offsetY,
+      Size effectiveSize) {
+    
+    double left, top, right, bottom;
+    
+    // Base coordinate transformation
+    switch (deviceOrientation) {
+      case DeviceOrientation.landscapeLeft:
+        left = boundingBox.top * scale + offsetX;
+        right = boundingBox.bottom * scale + offsetX;
+        top = (effectiveSize.height - boundingBox.right) * scale + offsetY;
+        bottom = (effectiveSize.height - boundingBox.left) * scale + offsetY;
+        break;
+      case DeviceOrientation.landscapeRight:
+        left = (effectiveSize.width - boundingBox.bottom) * scale + offsetX;
+        right = (effectiveSize.width - boundingBox.top) * scale + offsetX;
+        top = boundingBox.left * scale + offsetY;
+        bottom = boundingBox.right * scale + offsetY;
+        break;
+      case DeviceOrientation.portraitDown:
+        left = (effectiveSize.width - boundingBox.right) * scale + offsetX;
+        right = (effectiveSize.width - boundingBox.left) * scale + offsetX;
+        top = (effectiveSize.height - boundingBox.bottom) * scale + offsetY;
+        bottom = (effectiveSize.height - boundingBox.top) * scale + offsetY;
+        break;
+      default: // portraitUp
+        left = boundingBox.left * scale + offsetX;
+        right = boundingBox.right * scale + offsetX;
+        top = boundingBox.top * scale + offsetY;
+        bottom = boundingBox.bottom * scale + offsetY;
+    }
+    
+    // Apply front camera mirroring
+    if (cameraLenseDirection == CameraLensDirection.front) {
+      final double tempLeft = left;
+      left = offsetX + (offsetX + effectiveSize.width * scale - right);
+      right = offsetX + (offsetX + effectiveSize.width * scale - tempLeft);
+    }
+    
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+  
+  Offset _transformPoint(
+      Point<int> point, 
+      double scale, 
+      double offsetX, 
+      double offsetY,
+      Size effectiveSize) {
+    
+    double pointX, pointY;
+    
+    // Base coordinate transformation
+    switch (deviceOrientation) {
+      case DeviceOrientation.landscapeLeft:
+        pointX = point.y * scale + offsetX;
+        pointY = (effectiveSize.height - point.x) * scale + offsetY;
+        break;
+      case DeviceOrientation.landscapeRight:
+        pointX = (effectiveSize.width - point.y) * scale + offsetX;
+        pointY = point.x * scale + offsetY;
+        break;
+      case DeviceOrientation.portraitDown:
+        pointX = (effectiveSize.width - point.x) * scale + offsetX;
+        pointY = (effectiveSize.height - point.y) * scale + offsetY;
+        break;
+      default: // portraitUp
+        pointX = point.x * scale + offsetX;
+        pointY = point.y * scale + offsetY;
+    }
+    
+    // Apply front camera mirroring
+    if (cameraLenseDirection == CameraLensDirection.front) {
+      pointX = offsetX + (offsetX + effectiveSize.width * scale - pointX);
+    }
+    
+    return Offset(pointX, pointY);
+  }
+
   @override
   bool shouldRepaint(FaceDetectionPainter oldDelegate) {
     return oldDelegate.faces != faces || 
            oldDelegate.canCaptureImage != canCaptureImage ||
            oldDelegate.minDistanceThreshold != minDistanceThreshold ||
-           oldDelegate.maxDistanceThreshold != maxDistanceThreshold;
+           oldDelegate.maxDistanceThreshold != maxDistanceThreshold ||
+           oldDelegate.deviceOrientation != deviceOrientation;
   }
 }

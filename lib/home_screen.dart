@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedCameraIndex = 0;
   bool _canCaptureImage = false;
   String _distanceWarning = '';
+  DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
   
   // User-configurable settings
   int _minFaceCount = 1;
@@ -153,39 +155,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Platform.isIOS ? InputImageFormat.bgra8888 : InputImageFormat.nv21;
       
       // Get the correct rotation based on camera orientation and device orientation
-      InputImageRotation rotation = InputImageRotation.rotation0deg;
       final sensorOrientation = _controller!.description.sensorOrientation;
+      final lensDirection = _controller!.description.lensDirection;
       
-      if (Platform.isIOS) {
-        switch (sensorOrientation) {
-          case 90:
-            rotation = InputImageRotation.rotation90deg;
-            break;
-          case 180:
-            rotation = InputImageRotation.rotation180deg;
-            break;
-          case 270:
-            rotation = InputImageRotation.rotation270deg;
-            break;
-          default:
-            rotation = InputImageRotation.rotation0deg;
-        }
-      } else {
-        // Android
-        switch (sensorOrientation) {
-          case 90:
-            rotation = InputImageRotation.rotation90deg;
-            break;
-          case 180:
-            rotation = InputImageRotation.rotation180deg;
-            break;
-          case 270:
-            rotation = InputImageRotation.rotation270deg;
-            break;
-          default:
-            rotation = InputImageRotation.rotation0deg;
-        }
-      }
+      InputImageRotation rotation = _getInputImageRotation(
+        sensorOrientation, 
+        _deviceOrientation,
+        lensDirection
+      );
 
       final inputImageMetadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
@@ -366,6 +343,90 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  InputImageRotation _getInputImageRotation(
+      int sensorOrientation, 
+      DeviceOrientation deviceOrientation,
+      CameraLensDirection lensDirection) {
+    
+    int rotationDegrees = 0;
+    
+    // Calculate base rotation from sensor orientation
+    switch (deviceOrientation) {
+      case DeviceOrientation.portraitUp:
+        rotationDegrees = sensorOrientation;
+        break;
+      case DeviceOrientation.landscapeLeft:
+        rotationDegrees = Platform.isIOS 
+            ? (sensorOrientation + 90) % 360
+            : (sensorOrientation + 270) % 360;
+        break;
+      case DeviceOrientation.portraitDown:
+        rotationDegrees = (sensorOrientation + 180) % 360;
+        break;
+      case DeviceOrientation.landscapeRight:
+        rotationDegrees = Platform.isIOS 
+            ? (sensorOrientation + 270) % 360
+            : (sensorOrientation + 90) % 360;
+        break;
+    }
+    
+    // Adjust for front camera on iOS
+    if (Platform.isIOS && lensDirection == CameraLensDirection.front) {
+      rotationDegrees = (360 - rotationDegrees) % 360;
+    }
+    
+    // Convert to InputImageRotation
+    switch (rotationDegrees) {
+      case 90:
+        return InputImageRotation.rotation90deg;
+      case 180:
+        return InputImageRotation.rotation180deg;
+      case 270:
+        return InputImageRotation.rotation270deg;
+      default:
+        return InputImageRotation.rotation0deg;
+    }
+  }
+
+  void _onOrientationChanged() {
+    // Get current device orientation
+    final orientation = MediaQuery.of(context).orientation;
+    
+    DeviceOrientation newOrientation;
+    switch (orientation) {
+      case Orientation.portrait:
+        newOrientation = DeviceOrientation.portraitUp;
+        break;
+      case Orientation.landscape:
+        newOrientation = DeviceOrientation.landscapeLeft;
+        break;
+    }
+    
+    if (_deviceOrientation != newOrientation) {
+      setState(() {
+        _deviceOrientation = newOrientation;
+      });
+      
+      // Restart face detection with new orientation
+      if (_controller != null && _controller!.value.isInitialized) {
+        _restartFaceDetection();
+      }
+    }
+  }
+  
+  void _restartFaceDetection() async {
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      await _controller!.stopImageStream();
+    }
+    
+    // Small delay to ensure stream is properly stopped
+    await Future.delayed(Duration(milliseconds: 100));
+    
+    if (mounted && _controller != null && _controller!.value.isInitialized) {
+      _startFaceDetection();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -402,6 +463,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Update device orientation when build is called
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onOrientationChanged();
+    });
     return Scaffold(
       appBar: AppBar(
         title: const Text("Face Detection"),
@@ -471,6 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           sensorOrientation: _controller!.description.sensorOrientation,
                           minDistanceThreshold: _minDistanceThreshold,
                           maxDistanceThreshold: _maxDistanceThreshold,
+                          deviceOrientation: _deviceOrientation,
                         ),
                       ),
                       // Distance warning message
@@ -514,7 +580,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              'Faces: ${_faces.length}/${_minFaceCount}',
+                              'Faces: ${_faces.length}/$_minFaceCount',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
