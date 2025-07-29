@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'face_detection_painter.dart';
 import 'settings_screen.dart';
@@ -210,16 +211,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _checkFaceDistance(List<Face> faces) {
+    // Debug logging
+    debugPrint('Checking faces: detected=${faces.length}, required=$_minFaceCount');
+    
+    // First check: Do we have enough faces?
     if (faces.length < _minFaceCount) {
       _canCaptureImage = false;
-      _distanceWarning = faces.isEmpty 
-          ? 'No face detected' 
-          : 'Need $_minFaceCount face${_minFaceCount > 1 ? 's' : ''} (${faces.length}/$_minFaceCount)';
+      if (faces.isEmpty) {
+        _distanceWarning = 'No face detected';
+      } else if (_minFaceCount == 1) {
+        _distanceWarning = 'Detecting face...';
+      } else {
+        _distanceWarning = 'Only ${faces.length} face${faces.length > 1 ? 's' : ''} detected - Need $_minFaceCount faces';
+      }
+      debugPrint('Insufficient faces: $_distanceWarning');
       return;
     }
 
+    // Second check: Are all faces in the correct distance range?
     bool allFacesInRange = true;
     String warning = '';
+    int facesOutOfRange = 0;
 
     for (Face face in faces) {
       // Calculate face size relative to image dimensions
@@ -233,21 +245,43 @@ class _HomeScreenState extends State<HomeScreen> {
       
       if (faceAreaPercentage < _minDistanceThreshold) {
         allFacesInRange = false;
-        warning = 'Move closer to camera';
-        break;
+        facesOutOfRange++;
+        warning = facesOutOfRange == 1 ? 'Move closer to camera' : 'All faces need to move closer';
       } else if (faceAreaPercentage > _maxDistanceThreshold) {
         allFacesInRange = false;
-        warning = 'Move away from camera';
-        break;
+        facesOutOfRange++;
+        warning = facesOutOfRange == 1 ? 'Move away from camera' : 'All faces need to move away';
       }
     }
 
+    // Final decision: Can capture only if we have enough faces AND all are in range
     _canCaptureImage = allFacesInRange && faces.length >= _minFaceCount;
-    _distanceWarning = _canCaptureImage ? 'Ready to capture' : warning;
+    
+    if (_canCaptureImage) {
+      _distanceWarning = faces.length == _minFaceCount 
+          ? 'Perfect! Ready to capture' 
+          : 'Ready to capture ${faces.length} faces';
+    } else {
+      _distanceWarning = warning;
+    }
   }
 
   Future<void> _captureImage() async {
-    if (!_canCaptureImage || _controller == null || !_controller!.value.isInitialized) {
+    // Triple verification: Must have required face count AND be in capture state
+    if (!_canCaptureImage || 
+        _controller == null || 
+        !_controller!.value.isInitialized ||
+        _faces.length < _minFaceCount) {
+      
+      // Show warning if user somehow tries to capture with insufficient faces
+      if (_faces.length < _minFaceCount) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cannot capture: Need $_minFaceCount face${_minFaceCount > 1 ? 's' : ''}, only ${_faces.length} detected'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
       return;
     }
 
@@ -295,7 +329,15 @@ class _HomeScreenState extends State<HomeScreen> {
               _minFaceCount = minFaces;
               _minDistanceThreshold = minDist;
               _maxDistanceThreshold = maxDist;
+              // Force immediate re-evaluation of current faces
+              _checkFaceDistance(_faces);
             });
+            
+            // Save settings to persistent storage
+            _saveSettings();
+            
+            // Debug print to verify settings are updated
+            debugPrint('Settings updated: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
           },
         ),
       ),
@@ -326,11 +368,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
-
+    _loadSettings();
     _requestPermissions();
     _initializeCameras();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _minFaceCount = prefs.getInt('minFaceCount') ?? 1;
+      _minDistanceThreshold = prefs.getDouble('minDistanceThreshold') ?? 0.05;
+      _maxDistanceThreshold = prefs.getDouble('maxDistanceThreshold') ?? 0.4;
+    });
+    debugPrint('Settings loaded: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
+  }
+
+  Future<void> _saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('minFaceCount', _minFaceCount);
+    await prefs.setDouble('minDistanceThreshold', _minDistanceThreshold);
+    await prefs.setDouble('maxDistanceThreshold', _maxDistanceThreshold);
+    debugPrint('Settings saved: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
   }
 
   @override
@@ -455,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              'Faces Detected: ${_faces.length}',
+                              'Faces: ${_faces.length}/${_minFaceCount}',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,

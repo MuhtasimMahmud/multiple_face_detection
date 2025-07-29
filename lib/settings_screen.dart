@@ -19,16 +19,52 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late int _minFaceCount;
-  late double _minDistanceThreshold;
-  late double _maxDistanceThreshold;
+  late int _tempMinFaceCount;
+  late double _tempMinDistanceThreshold;
+  late double _tempMaxDistanceThreshold;
+  bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
-    _minFaceCount = widget.minFaceCount;
-    _minDistanceThreshold = widget.minDistanceThreshold;
-    _maxDistanceThreshold = widget.maxDistanceThreshold;
+    _tempMinFaceCount = widget.minFaceCount;
+    _tempMinDistanceThreshold = widget.minDistanceThreshold;
+    _tempMaxDistanceThreshold = widget.maxDistanceThreshold;
+  }
+
+  void _markAsChanged() {
+    if (!_hasChanges) {
+      setState(() {
+        _hasChanges = true;
+      });
+    }
+  }
+
+  void _applySettings() {
+    widget.onSettingsChanged(
+      _tempMinFaceCount,
+      _tempMinDistanceThreshold,
+      _tempMaxDistanceThreshold,
+    );
+    setState(() {
+      _hasChanges = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Settings saved successfully!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _resetSettings() {
+    setState(() {
+      _tempMinFaceCount = widget.minFaceCount;
+      _tempMinDistanceThreshold = widget.minDistanceThreshold;
+      _tempMaxDistanceThreshold = widget.maxDistanceThreshold;
+      _hasChanges = false;
+    });
   }
 
   @override
@@ -36,25 +72,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Detection Settings'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              widget.onSettingsChanged(
-                _minFaceCount,
-                _minDistanceThreshold,
-                _maxDistanceThreshold,
-              );
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (_hasChanges) {
+              _showDiscardDialog();
+            } else {
               Navigator.pop(context);
-            },
-            child: const Text(
-              'Save',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+            }
+          },
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -82,14 +111,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         Expanded(
                           child: Slider(
-                            value: _minFaceCount.toDouble(),
+                            value: _tempMinFaceCount.toDouble(),
                             min: 1,
                             max: 10,
                             divisions: 9,
-                            label: _minFaceCount.toString(),
+                            label: _tempMinFaceCount.toString(),
                             onChanged: (value) {
                               setState(() {
-                                _minFaceCount = value.round();
+                                _tempMinFaceCount = value.round();
+                                _markAsChanged();
                               });
                             },
                           ),
@@ -97,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Container(
                           width: 50,
                           child: Text(
-                            _minFaceCount.toString(),
+                            _tempMinFaceCount.toString(),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -143,17 +173,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         Expanded(
                           child: Slider(
-                            value: _minDistanceThreshold,
+                            value: _tempMinDistanceThreshold,
                             min: 0.01,
                             max: 0.15,
                             divisions: 14,
-                            label: '${(_minDistanceThreshold * 100).toInt()}%',
+                            label: '${(_tempMinDistanceThreshold * 100).toInt()}%',
                             onChanged: (value) {
                               setState(() {
-                                _minDistanceThreshold = value;
-                                if (_minDistanceThreshold >= _maxDistanceThreshold) {
-                                  _maxDistanceThreshold = _minDistanceThreshold + 0.05;
+                                _tempMinDistanceThreshold = value;
+                                if (_tempMinDistanceThreshold >= _tempMaxDistanceThreshold) {
+                                  _tempMaxDistanceThreshold = _tempMinDistanceThreshold + 0.05;
                                 }
+                                _markAsChanged();
                               });
                             },
                           ),
@@ -161,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Container(
                           width: 50,
                           child: Text(
-                            '${(_minDistanceThreshold * 100).toInt()}%',
+                            '${(_tempMinDistanceThreshold * 100).toInt()}%',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
@@ -179,17 +210,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         Expanded(
                           child: Slider(
-                            value: _maxDistanceThreshold,
+                            value: _tempMaxDistanceThreshold,
                             min: 0.1,
                             max: 0.6,
                             divisions: 50,
-                            label: '${(_maxDistanceThreshold * 100).toInt()}%',
+                            label: '${(_tempMaxDistanceThreshold * 100).toInt()}%',
                             onChanged: (value) {
                               setState(() {
-                                _maxDistanceThreshold = value;
-                                if (_maxDistanceThreshold <= _minDistanceThreshold) {
-                                  _minDistanceThreshold = _maxDistanceThreshold - 0.05;
+                                _tempMaxDistanceThreshold = value;
+                                if (_tempMaxDistanceThreshold <= _tempMinDistanceThreshold) {
+                                  _tempMinDistanceThreshold = _tempMaxDistanceThreshold - 0.05;
                                 }
+                                _markAsChanged();
                               });
                             },
                           ),
@@ -197,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Container(
                           width: 50,
                           child: Text(
-                            '${(_maxDistanceThreshold * 100).toInt()}%',
+                            '${(_tempMaxDistanceThreshold * 100).toInt()}%',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
@@ -243,8 +275,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 20),
+            
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _hasChanges ? _resetSettings : null,
+                    child: const Text('Reset'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _hasChanges ? _applySettings : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _hasChanges ? Colors.blue : Colors.grey,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDiscardDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard Changes?'),
+        content: const Text('You have unsaved changes. Do you want to discard them?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pop(context); // Close settings screen
+            },
+            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
   }
