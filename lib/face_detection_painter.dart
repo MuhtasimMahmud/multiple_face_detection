@@ -7,63 +7,109 @@ class FaceDetectionPainter extends CustomPainter {
   final List<Face> faces;
   final Size imageSize;
   final CameraLensDirection cameraLenseDirection;
+  final Size previewSize;
+  final bool canCaptureImage;
+  final int sensorOrientation;
+  final double minDistanceThreshold;
+  final double maxDistanceThreshold;
 
-  FaceDetectionPainter(
-      {required this.faces,
-      required this.imageSize,
-      required this.cameraLenseDirection});
+  FaceDetectionPainter({
+    required this.faces,
+    required this.imageSize,
+    required this.cameraLenseDirection,
+    required this.previewSize,
+    required this.canCaptureImage,
+    required this.sensorOrientation,
+    required this.minDistanceThreshold,
+    required this.maxDistanceThreshold,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // TODO: implement paint
+    if (faces.isEmpty) return;
 
+    // Calculate scaling factors - use the actual preview size ratio
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
+    
+    // Use the smaller scale to maintain aspect ratio
+    final double scale = scaleX < scaleY ? scaleX : scaleY;
+    
+    // Calculate offsets to center the scaled image
+    final double offsetX = (size.width - imageSize.width * scale) / 2;
+    final double offsetY = (size.height - imageSize.height * scale) / 2;
 
-    final Paint facePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..color = Colors.green;
 
     final Paint landMarkPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..color = Colors.blue;
+      ..strokeWidth = 2.0
+      ..color = Colors.red;
 
     final Paint textBackgroundPaint = Paint()
       ..style = PaintingStyle.fill
-      ..color = Colors.black54;
+      ..color = Colors.black87;
 
     for (var i = 0; i < faces.length; i++) {
       final Face face = faces[i];
-
-      double leftoOffset = face.boundingBox.left;
+      
+      // Transform coordinates for face bounding box
+      double left, top, right, bottom;
+      
+      // Apply coordinate transformation based on camera orientation
       if (cameraLenseDirection == CameraLensDirection.front) {
-        leftoOffset = imageSize.width - face.boundingBox.right;
+        // For front camera, mirror the coordinates horizontally
+        left = (imageSize.width - face.boundingBox.right) * scale + offsetX;
+        right = (imageSize.width - face.boundingBox.left) * scale + offsetX;
+        top = face.boundingBox.top * scale + offsetY;
+        bottom = face.boundingBox.bottom * scale + offsetY;
+      } else {
+        // For back camera, use coordinates as-is
+        left = face.boundingBox.left * scale + offsetX;
+        right = face.boundingBox.right * scale + offsetX;
+        top = face.boundingBox.top * scale + offsetY;
+        bottom = face.boundingBox.bottom * scale + offsetY;
       }
 
-      final double left = leftoOffset * scaleX;
-      final double top = face.boundingBox.top * scaleY;
-      final double right = (leftoOffset + face.boundingBox.width) * scaleX;
-      final double bottom =
-          (face.boundingBox.top + face.boundingBox.height) * scaleY;
+      // Draw face bounding rectangle with different colors based on distance
+      final Paint currentFacePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+      
+      // Check individual face distance for color coding
+      final faceWidth = face.boundingBox.width;
+      final faceHeight = face.boundingBox.height;
+      final faceAreaPercentage = (faceWidth * faceHeight) / (imageSize.width * imageSize.height);
+      
+      if (faceAreaPercentage < minDistanceThreshold || faceAreaPercentage > maxDistanceThreshold) {
+        currentFacePaint.color = Colors.red;
+      } else {
+        currentFacePaint.color = Colors.green;
+      }
+      
+      canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), currentFacePaint);
 
-      canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), facePaint);
-
+      // Function to draw facial landmarks
       void drawLandmark(FaceLandmarkType type) {
         if (face.landmarks[type] != null) {
           final point = face.landmarks[type]!.position;
-
-          double pointX = point.x.toDouble();
+          
+          double pointX, pointY;
+          
           if (cameraLenseDirection == CameraLensDirection.front) {
-            pointX = imageSize.width - pointX;
+            // Mirror X coordinate for front camera
+            pointX = (imageSize.width - point.x) * scale + offsetX;
+            pointY = point.y * scale + offsetY;
+          } else {
+            // Use coordinates as-is for back camera
+            pointX = point.x * scale + offsetX;
+            pointY = point.y * scale + offsetY;
           }
 
-          canvas.drawCircle(
-              Offset(pointX * scaleX, point.y * scaleY), 4.00, landMarkPaint);
+          canvas.drawCircle(Offset(pointX, pointY), 3.0, landMarkPaint);
         }
       }
 
+      // Draw all facial landmarks
       drawLandmark(FaceLandmarkType.leftEye);
       drawLandmark(FaceLandmarkType.rightEye);
       drawLandmark(FaceLandmarkType.noseBase);
@@ -71,21 +117,15 @@ class FaceDetectionPainter extends CustomPainter {
       drawLandmark(FaceLandmarkType.rightMouth);
       drawLandmark(FaceLandmarkType.bottomMouth);
 
-      // String mood = "Neutral";
-      // final smileProb = face.smilingProbability ?? 0;
-      //
-      // if (smileProb > 0.8) {
-      //   mood = 'Laughing';
-      // } else if (smileProb > 0.5) {
-      //   mood = 'Smiling';
-      // } else if (smileProb < 0.1) {
-      //   mood = 'Serious';
-      // }
-
+      // Add face ID label
       final TextSpan faceIdSpan = TextSpan(
-          text: 'Face ${i + 1}',
-          style: TextStyle(
-              color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold));
+        text: 'Face ${i + 1}',
+        style: const TextStyle(
+          color: Colors.white, 
+          fontSize: 14, 
+          fontWeight: FontWeight.bold
+        )
+      );
 
       final TextPainter textPainter = TextPainter(
         text: faceIdSpan,
@@ -95,18 +135,31 @@ class FaceDetectionPainter extends CustomPainter {
 
       textPainter.layout();
 
-      final textRect = Rect.fromLTWH(left, top - textPainter.height - 8,
-          textPainter.width + 16, textPainter.height + 8);
+      // Position label above the face bounding box
+      final double labelX = left;
+      final double labelY = top - textPainter.height - 10;
 
-      canvas.drawRRect(RRect.fromRectAndRadius(textRect, Radius.circular(10)),
-          textBackgroundPaint);
+      final textRect = Rect.fromLTWH(
+        labelX, 
+        labelY, 
+        textPainter.width + 12, 
+        textPainter.height + 6
+      );
 
-      textPainter.paint(canvas, Offset(left + 8, top - textPainter.height - 4));
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(textRect, const Radius.circular(8)),
+        textBackgroundPaint
+      );
+
+      textPainter.paint(canvas, Offset(labelX + 6, labelY + 3));
     }
   }
 
   @override
   bool shouldRepaint(FaceDetectionPainter oldDelegate) {
-    return oldDelegate.faces != faces;
+    return oldDelegate.faces != faces || 
+           oldDelegate.canCaptureImage != canCaptureImage ||
+           oldDelegate.minDistanceThreshold != minDistanceThreshold ||
+           oldDelegate.maxDistanceThreshold != maxDistanceThreshold;
   }
 }
