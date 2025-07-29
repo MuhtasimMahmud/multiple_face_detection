@@ -11,6 +11,7 @@ class GalleryScreen extends StatefulWidget {
     required this.onDeleteImage,
   });
 
+
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
