@@ -37,12 +37,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _canCaptureImage = false;
   String _distanceWarning = '';
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
-  
+
   // User-configurable settings
   int _minFaceCount = 1;
   double _minDistanceThreshold = 0.05; // 5% of image area
-  double _maxDistanceThreshold = 0.4;  // 40% of image area
-  
+  double _maxDistanceThreshold = 0.4; // 40% of image area
+
   // Captured images storage
   List<String> _capturedImages = [];
 
@@ -62,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       _selectedCameraIndex = cameras.indexWhere(
-          (camera) => camera.lensDirection == CameraLensDirection.back);
+          (camera) => camera.lensDirection == CameraLensDirection.front);
 
       if (_selectedCameraIndex == -1) {
         _selectedCameraIndex = 0;
@@ -153,16 +153,13 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final format =
           Platform.isIOS ? InputImageFormat.bgra8888 : InputImageFormat.nv21;
-      
+
       // Get the correct rotation based on camera orientation and device orientation
       final sensorOrientation = _controller!.description.sensorOrientation;
       final lensDirection = _controller!.description.lensDirection;
-      
+
       InputImageRotation rotation = _getInputImageRotation(
-        sensorOrientation, 
-        _deviceOrientation,
-        lensDirection
-      );
+          sensorOrientation, _deviceOrientation, lensDirection);
 
       final inputImageMetadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
@@ -189,8 +186,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _checkFaceDistance(List<Face> faces) {
     // Debug logging
-    debugPrint('Checking faces: detected=${faces.length}, required=$_minFaceCount');
-    
+    debugPrint(
+        'Checking faces: detected=${faces.length}, required=$_minFaceCount');
+
     // First check: Do we have enough faces?
     if (faces.length < _minFaceCount) {
       _canCaptureImage = false;
@@ -199,7 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (_minFaceCount == 1) {
         _distanceWarning = 'Detecting face...';
       } else {
-        _distanceWarning = 'Only ${faces.length} face${faces.length > 1 ? 's' : ''} detected - Need $_minFaceCount faces';
+        _distanceWarning =
+            'Only ${faces.length} face${faces.length > 1 ? 's' : ''} detected - Need $_minFaceCount faces';
       }
       debugPrint('Insufficient faces: $_distanceWarning');
       return;
@@ -216,27 +215,32 @@ class _HomeScreenState extends State<HomeScreen> {
       final faceHeight = face.boundingBox.height;
       final imageWidth = _controller?.value.previewSize?.width ?? 1;
       final imageHeight = _controller?.value.previewSize?.height ?? 1;
-      
+
       // Calculate face area percentage
-      final faceAreaPercentage = (faceWidth * faceHeight) / (imageWidth * imageHeight);
-      
+      final faceAreaPercentage =
+          (faceWidth * faceHeight) / (imageWidth * imageHeight);
+
       if (faceAreaPercentage < _minDistanceThreshold) {
         allFacesInRange = false;
         facesOutOfRange++;
-        warning = facesOutOfRange == 1 ? 'Move closer to camera' : 'All faces need to move closer';
+        warning = facesOutOfRange == 1
+            ? 'Move closer to camera'
+            : 'All faces need to move closer';
       } else if (faceAreaPercentage > _maxDistanceThreshold) {
         allFacesInRange = false;
         facesOutOfRange++;
-        warning = facesOutOfRange == 1 ? 'Move away from camera' : 'All faces need to move away';
+        warning = facesOutOfRange == 1
+            ? 'Move away from camera'
+            : 'All faces need to move away';
       }
     }
 
     // Final decision: Can capture only if we have enough faces AND all are in range
     _canCaptureImage = allFacesInRange && faces.length >= _minFaceCount;
-    
+
     if (_canCaptureImage) {
-      _distanceWarning = faces.length == _minFaceCount 
-          ? 'Perfect! Ready to capture' 
+      _distanceWarning = faces.length == _minFaceCount
+          ? 'Perfect! Ready to capture'
           : 'Ready to capture ${faces.length} faces';
     } else {
       _distanceWarning = warning;
@@ -245,16 +249,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _captureImage() async {
     // Triple verification: Must have required face count AND be in capture state
-    if (!_canCaptureImage || 
-        _controller == null || 
+    if (!_canCaptureImage ||
+        _controller == null ||
         !_controller!.value.isInitialized ||
         _faces.length < _minFaceCount) {
-      
       // Show warning if user somehow tries to capture with insufficient faces
       if (_faces.length < _minFaceCount) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Cannot capture: Need $_minFaceCount face${_minFaceCount > 1 ? 's' : ''}, only ${_faces.length} detected'),
+            content: Text(
+                'Cannot capture: Need $_minFaceCount face${_minFaceCount > 1 ? 's' : ''}, only ${_faces.length} detected'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -268,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _capturedImages.add(image.path);
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Image captured! Total: ${_capturedImages.length}'),
@@ -309,12 +313,13 @@ class _HomeScreenState extends State<HomeScreen> {
               // Force immediate re-evaluation of current faces
               _checkFaceDistance(_faces);
             });
-            
+
             // Save settings to persistent storage
             _saveSettings();
-            
+
             // Debug print to verify settings are updated
-            debugPrint('Settings updated: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
+            debugPrint(
+                'Settings updated: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
           },
         ),
       ),
@@ -343,20 +348,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  InputImageRotation _getInputImageRotation(
-      int sensorOrientation, 
-      DeviceOrientation deviceOrientation,
-      CameraLensDirection lensDirection) {
-    
+  InputImageRotation _getInputImageRotation(int sensorOrientation,
+      DeviceOrientation deviceOrientation, CameraLensDirection lensDirection) {
     int rotationDegrees = 0;
-    
+
     // Calculate base rotation from sensor orientation
     switch (deviceOrientation) {
       case DeviceOrientation.portraitUp:
         rotationDegrees = sensorOrientation;
         break;
       case DeviceOrientation.landscapeLeft:
-        rotationDegrees = Platform.isIOS 
+        rotationDegrees = Platform.isIOS
             ? (sensorOrientation + 90) % 360
             : (sensorOrientation + 270) % 360;
         break;
@@ -364,17 +366,17 @@ class _HomeScreenState extends State<HomeScreen> {
         rotationDegrees = (sensorOrientation + 180) % 360;
         break;
       case DeviceOrientation.landscapeRight:
-        rotationDegrees = Platform.isIOS 
+        rotationDegrees = Platform.isIOS
             ? (sensorOrientation + 270) % 360
             : (sensorOrientation + 90) % 360;
         break;
     }
-    
+
     // Adjust for front camera on iOS
     if (Platform.isIOS && lensDirection == CameraLensDirection.front) {
       rotationDegrees = (360 - rotationDegrees) % 360;
     }
-    
+
     // Convert to InputImageRotation
     switch (rotationDegrees) {
       case 90:
@@ -391,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onOrientationChanged() {
     // Get current device orientation
     final orientation = MediaQuery.of(context).orientation;
-    
+
     DeviceOrientation newOrientation;
     switch (orientation) {
       case Orientation.portrait:
@@ -401,27 +403,27 @@ class _HomeScreenState extends State<HomeScreen> {
         newOrientation = DeviceOrientation.landscapeLeft;
         break;
     }
-    
+
     if (_deviceOrientation != newOrientation) {
       setState(() {
         _deviceOrientation = newOrientation;
       });
-      
+
       // Restart face detection with new orientation
       if (_controller != null && _controller!.value.isInitialized) {
         _restartFaceDetection();
       }
     }
   }
-  
+
   void _restartFaceDetection() async {
     if (_controller != null && _controller!.value.isStreamingImages) {
       await _controller!.stopImageStream();
     }
-    
+
     // Small delay to ensure stream is properly stopped
     await Future.delayed(Duration(milliseconds: 100));
-    
+
     if (mounted && _controller != null && _controller!.value.isInitialized) {
       _startFaceDetection();
     }
@@ -442,7 +444,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _minDistanceThreshold = prefs.getDouble('minDistanceThreshold') ?? 0.05;
       _maxDistanceThreshold = prefs.getDouble('maxDistanceThreshold') ?? 0.4;
     });
-    debugPrint('Settings loaded: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
+    debugPrint(
+        'Settings loaded: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
   }
 
   Future<void> _saveSettings() async {
@@ -450,7 +453,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setInt('minFaceCount', _minFaceCount);
     await prefs.setDouble('minDistanceThreshold', _minDistanceThreshold);
     await prefs.setDouble('maxDistanceThreshold', _maxDistanceThreshold);
-    debugPrint('Settings saved: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
+    debugPrint(
+        'Settings saved: minFaces=$_minFaceCount, minDist=$_minDistanceThreshold, maxDist=$_maxDistanceThreshold');
   }
 
   @override
@@ -511,7 +515,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     fit: StackFit.expand,
                     children: [
                       // Mirror front camera preview for natural selfie experience
-                      _controller!.description.lensDirection == CameraLensDirection.front
+                      _controller!.description.lensDirection ==
+                              CameraLensDirection.front
                           ? Transform(
                               alignment: Alignment.center,
                               transform: Matrix4.identity()..rotateY(3.14159),
@@ -528,12 +533,13 @@ class _HomeScreenState extends State<HomeScreen> {
                               _controller!.description.lensDirection,
                           previewSize: Size(
                             MediaQuery.of(context).size.width,
-                            MediaQuery.of(context).size.height - 
-                            AppBar().preferredSize.height - 
-                            MediaQuery.of(context).padding.top,
+                            MediaQuery.of(context).size.height -
+                                AppBar().preferredSize.height -
+                                MediaQuery.of(context).padding.top,
                           ),
                           canCaptureImage: _canCaptureImage,
-                          sensorOrientation: _controller!.description.sensorOrientation,
+                          sensorOrientation:
+                              _controller!.description.sensorOrientation,
                           minDistanceThreshold: _minDistanceThreshold,
                           maxDistanceThreshold: _maxDistanceThreshold,
                           deviceOrientation: _deviceOrientation,
@@ -550,7 +556,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             horizontal: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: _canCaptureImage ? Colors.green.withValues(alpha: 0.8) : Colors.red.withValues(alpha: 0.8),
+                            color: _canCaptureImage
+                                ? Colors.green.withValues(alpha: 0.8)
+                                : Colors.red.withValues(alpha: 0.8),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
@@ -603,16 +611,22 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: 70,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: _canCaptureImage ? Colors.white : Colors.grey,
+                                color: _canCaptureImage
+                                    ? Colors.white
+                                    : Colors.grey,
                                 border: Border.all(
-                                  color: _canCaptureImage ? Colors.blue : Colors.grey,
+                                  color: _canCaptureImage
+                                      ? Colors.blue
+                                      : Colors.grey,
                                   width: 4,
                                 ),
                               ),
                               child: Icon(
                                 Icons.camera_alt,
                                 size: 30,
-                                color: _canCaptureImage ? Colors.blue : Colors.grey[600],
+                                color: _canCaptureImage
+                                    ? Colors.blue
+                                    : Colors.grey[600],
                               ),
                             ),
                           ),
